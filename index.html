@@ -207,16 +207,16 @@
       <div class="config">
         <div>
           <label for="broker">HiveMQ WebSocket URL</label>
-          <input id="broker" placeholder="wss://your-cluster.s1.eu.hivemq.cloud:8884/mqtt" autocomplete="off">
+          <input id="broker" value="wss://08de42fed10343eb9658abdf0b5920a0.s1.eu.hivemq.cloud:8884/mqtt" autocomplete="off">
         </div>
         <div class="config-row">
           <div>
             <label for="user">Username</label>
-            <input id="user" autocomplete="off">
+            <input id="user" value="esp32_user2" autocomplete="off">
           </div>
           <div>
             <label for="pass">Password</label>
-            <input id="pass" type="password" autocomplete="new-password">
+            <input id="pass" type="password" value="Ibhaan123" autocomplete="new-password">
           </div>
         </div>
         <div>
@@ -322,8 +322,22 @@
 
     client.on('error', (err) => {
       setStatus('', 'Connection error');
-      log.textContent = 'Error: ' + err.message;
+      const detail = (err && (err.message || err.error || err.toString())) || 'Unknown MQTT error';
+      console.warn('[MQTT error]', err);
+      log.textContent = 'Error: ' + detail;
       connectBtn.disabled = false;
+    });
+
+    client.on('offline', () => setStatus('', 'Offline'));
+
+    // WebSocket-level failures (wrong URL / bad cert / protocol) land here.
+    client.on('connect', () => {});
+    client.stream.on && client.stream.on('close', () => {
+      log.textContent = 'WebSocket closed — check the wss:// URL (must end :8884/mqtt) and that WebSocket is enabled in HiveMQ.';
+    });
+    client.stream.on && client.stream.on('error', (e) => {
+      console.warn('[WS error]', e);
+      log.textContent = 'WebSocket error: ' + ((e && e.message) || e);
     });
 
     client.on('close', () => {
