@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#14171a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Robot Remote</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.3.4/mqtt.min.js"></script>
+<style>
+  :root {
+    --bg: #14171a;
+    --panel: #1d2226;
+    --line: #2c3237;
+    --text: #e8ecef;
+    --dim: #7d8791;
+    --accent: #ff7a1a;
+    --accent-dim: #4a3320;
+    --ok: #3ecf6e;
+    --bad: #e5484d;
+    --btn: clamp(56px, 18vw, 84px);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: calc(20px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right))
+      calc(28px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left));
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  h1 {
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--dim);
+  }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .fs-btn {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--dim);
+    border-radius: 8px;
+    width: 34px;
+    height: 34px;
+    font-size: 17px;
+    line-height: 1;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--bad);
+    transition: background 0.2s;
+  }
+  .dot.connected { background: var(--ok); }
+  .dot.connecting { background: #e5b83d; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 14px;
+  }
+
+  .dpad {
+    display: grid;
+    grid-template-columns: var(--btn) var(--btn) var(--btn);
+    grid-template-rows: var(--btn) var(--btn) var(--btn);
+    gap: 12px;
+    justify-content: center;
+    margin: 6px auto 20px;
+    touch-action: none;
+  }
+  .dpad button {
+    border: 1px solid var(--line);
+    background: #262b30;
+    color: var(--text);
+    border-radius: 14px;
+    font-size: clamp(24px, 7vw, 32px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    min-height: 44px;
+    transition: background 0.08s, transform 0.08s, border-color 0.08s;
+  }
+  .dpad button:active,
+  .dpad button.pressed {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    transform: scale(0.96);
+  }
+  .cell-fwd  { grid-column: 2; grid-row: 1; }
+  .cell-left { grid-column: 1; grid-row: 2; }
+  .cell-stop { grid-column: 2; grid-row: 2; background: #2b1414; border-color: #4a2020; color: var(--bad); font-size: 14px; font-weight: 700; letter-spacing: 0.03em; }
+  .cell-stop:active { background: var(--bad); border-color: var(--bad); color: #fff; }
+  .cell-right { grid-column: 3; grid-row: 2; }
+  .cell-back  { grid-column: 2; grid-row: 3; }
+
+  .config {
+    display: grid;
+    gap: 10px;
+  }
+  .config label {
+    font-size: 12px;
+    color: var(--dim);
+    display: block;
+    margin-bottom: 4px;
+  }
+  .config input {
+    width: 100%;
+    background: #262b30;
+    border: 1px solid var(--line);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 10px 11px;
+    font-size: 16px;
+    -webkit-appearance: none;
+  }
+  .config-row { display: flex; gap: 10px; }
+  .config-row > div { flex: 1; }
+
+  .connect-btn {
+    margin-top: 14px;
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: none;
+    background: var(--accent);
+    color: #1a1200;
+    font-size: 14px;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  .connect-btn:disabled {
+    opacity: 0.5;
+  }
+
+  .log {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: var(--dim);
+    margin-top: 4px;
+    min-height: 16px;
+  }
+
+  details summary {
+    font-size: 13px;
+    color: var(--dim);
+    cursor: pointer;
+    margin-bottom: 12px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Robot Remote</h1>
+    <div class="header-right">
+      <div class="status">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">Not connected</span>
+      </div>
+      <button class="fs-btn" id="fsBtn" title="Fullscreen" aria-label="Fullscreen">&#9974;</button>
+    </div>
+  </header>
+
+  <div class="panel">
+    <details id="configDetails">
+      <summary>Broker settings</summary>
+      <div class="config">
+        <div>
+          <label for="broker">HiveMQ WebSocket URL</label>
+          <input id="broker" placeholder="wss://your-cluster.s1.eu.hivemq.cloud:8884/mqtt" autocomplete="off">
+        </div>
+        <div class="config-row">
+          <div>
+            <label for="user">Username</label>
+            <input id="user" autocomplete="off">
+          </div>
+          <div>
+            <label for="pass">Password</label>
+            <input id="pass" type="password" autocomplete="new-password">
+          </div>
+        </div>
+        <div>
+          <label for="topic">Command topic</label>
+          <input id="topic" value="agri/bot/command">
+        </div>
+      </div>
+      <button class="connect-btn" id="connectBtn">Connect</button>
+      <div class="log" id="log"></div>
+    </details>
+  </div>
+
+  <div class="panel">
+    <div class="dpad">
+      <button class="cell-fwd"   data-cmd="FORWARD">&#9650;</button>
+      <button class="cell-left"  data-cmd="LEFT">&#9664;</button>
+      <button class="cell-stop"  data-cmd="STOP">STOP</button>
+      <button class="cell-right" data-cmd="RIGHT">&#9654;</button>
+      <button class="cell-back"  data-cmd="BACKWARD">&#9660;</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let client = null;
+
+  const dot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const log = document.getElementById('log');
+  const connectBtn = document.getElementById('connectBtn');
+  const configDetails = document.getElementById('configDetails');
+  const topicInput = document.getElementById('topic');
+  const fsBtn = document.getElementById('fsBtn');
+
+  function saveCreds() {
+    try {
+      localStorage.setItem('bc_url', document.getElementById('broker').value.trim());
+      localStorage.setItem('bc_user', document.getElementById('user').value.trim());
+      localStorage.setItem('bc_pass', document.getElementById('pass').value);
+    } catch (_) {}
+  }
+
+  function restoreCreds() {
+    try {
+      const u = localStorage.getItem('bc_url');
+      const us = localStorage.getItem('bc_user');
+      const p = localStorage.getItem('bc_pass');
+      if (u) document.getElementById('broker').value = u;
+      if (us) document.getElementById('user').value = us;
+      if (p) document.getElementById('pass').value = p;
+    } catch (_) {}
+  }
+  restoreCreds();
+
+  function setStatus(state, text) {
+    dot.className = 'dot ' + state;
+    statusText.textContent = text;
+  }
+
+  function publish(cmd) {
+    if (!client || !client.connected) {
+      log.textContent = 'Not connected — open Broker settings and connect first.';
+      return;
+    }
+    client.publish(topicInput.value.trim(), cmd);
+    log.textContent = 'Sent: ' + cmd;
+  }
+
+  connectBtn.addEventListener('click', () => {
+    const url = document.getElementById('broker').value.trim();
+    const username = document.getElementById('user').value.trim();
+    const password = document.getElementById('pass').value;
+
+    saveCreds();
+
+    if (!url) {
+      log.textContent = 'Enter your HiveMQ WebSocket URL first.';
+      return;
+    }
+
+    if (client) {
+      client.end(true);
+    }
+
+    setStatus('connecting', 'Connecting…');
+    connectBtn.disabled = true;
+
+    client = mqtt.connect(url, {
+      username: username,
+      password: password,
+      clientId: 'robot-web-' + Math.random().toString(16).slice(2, 8),
+      reconnectPeriod: 3000,
+    });
+
+    client.on('connect', () => {
+      setStatus('connected', 'Connected');
+      log.textContent = 'Connected to broker.';
+      connectBtn.disabled = false;
+      configDetails.removeAttribute('open');
+    });
+
+    client.on('reconnect', () => setStatus('connecting', 'Reconnecting…'));
+
+    client.on('error', (err) => {
+      setStatus('', 'Connection error');
+      log.textContent = 'Error: ' + err.message;
+      connectBtn.disabled = false;
+    });
+
+    client.on('close', () => {
+      setStatus('', 'Not connected');
+      connectBtn.disabled = false;
+    });
+  });
+
+  document.querySelectorAll('.dpad button[data-cmd]').forEach(btn => {
+    const cmd = btn.dataset.cmd;
+
+    if (cmd === 'STOP') {
+      btn.addEventListener('click', () => { haptic(20); publish('STOP'); });
+      return;
+    }
+
+    // Press-and-hold: send command on press, STOP on release.
+    const start = (e) => {
+      e.preventDefault();
+      try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+      btn.classList.add('pressed');
+      haptic(10);
+      publish(cmd);
+    };
+    const end   = (e) => {
+      e.preventDefault();
+      btn.classList.remove('pressed');
+      publish('STOP');
+    };
+
+    btn.addEventListener('pointerdown', start);
+    btn.addEventListener('pointerup', end);
+    btn.addEventListener('pointercancel', end);
+  });
+
+  function haptic(ms) {
+    if (navigator.vibrate) { try { navigator.vibrate(ms); } catch (_) {} }
+  }
+
+  fsBtn.addEventListener('click', () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen && document.exitFullscreen();
+    } else if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen();
+    }
+  });
+</script>
+</body>
+</html>
